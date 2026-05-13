@@ -3,7 +3,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
 const apiClient = axios.create({
-    baseURL: 'http://10.10.20.89:5000/api',
+    baseURL: 'https://ecoshmel.onrender.com/api',
     timeout: 10000,
 });
 
