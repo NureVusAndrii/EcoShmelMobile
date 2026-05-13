@@ -2,6 +2,8 @@
 
 # dependencies
 node_modules/
+google-services.json
+ecoshmel-firebase-adminsdk-fbsvc-226d7ac4e4.json
 
 # Expo
 .expo/

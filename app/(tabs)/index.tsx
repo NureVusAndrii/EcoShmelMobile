@@ -1,98 +1,120 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, FlatList, StyleSheet, ActivityIndicator, RefreshControl } from 'react-native';
+import apiClient from '../../api/client';
+import * as SecureStore from 'expo-secure-store';
+import { useRouter } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { translations } from '../../constants/translations';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+interface Alert {
+  _id: string;
+  message: string;
+  municipalityId: any;
+  resolvedAt?: string;
+}
+
+interface Municipality {
+  _id: string;
+  name: string;
+  country: string;
+}
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const { language } = useLanguage();
+  const t = translations[language];
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const fetchData = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      if (!token) {
+        return;
+      }
+
+      setLoading(true);
+      const munRes = await apiClient.get('/municipalities/my');
+      setMunicipalities(munRes.data);
+
+      const alertRes = await apiClient.get('/alerts');
+      setAlerts(alertRes.data);
+    } catch (e: any) {
+      if (e.response?.status !== 401) {
+        console.error("Деталі помилки API:", e.response?.data || e.message);
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
+  const renderMunicipality = ({ item }: { item: Municipality }) => {
+    const activeAlerts = alerts.filter(a =>
+        (a.municipalityId?._id === item._id || a.municipalityId === item._id) &&
+        !a.resolvedAt
+    );
+
+    return (
+        <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => router.push({
+              pathname: `/municipality/${item._id}`,
+              params: { name: item.name }
+            })}
+        >
+          <View style={styles.card}>
+            <View style={styles.header}>
+              <Text style={styles.name}>{item.name}</Text>
+              <Text style={styles.country}>{item.country}</Text>
+            </View>
+            <View style={styles.content}>
+              {activeAlerts.length > 0 ? (
+                  activeAlerts.map(alert => (
+                      <Text key={alert._id} style={styles.alertText}>
+                        ⚠️ {alert.message}
+                      </Text>
+                  ))
+              ) : (
+                  <Text style={styles.safeText}>
+                    {t.safe}
+                  </Text>
+              )}
+            </View>
+          </View>
+        </TouchableOpacity>
+    );
+  };
+
+  if (loading) return <ActivityIndicator size="large" style={styles.center} />;
+
+  return (
+
+      <FlatList
+          data={municipalities}
+          keyExtractor={(item) => item._id}
+          renderItem={renderMunicipality}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchData(); }} />}
+          ListEmptyComponent={<Text style={styles.empty}>{t.noMunicipalities}</Text>}
+          contentContainerStyle={styles.list}
+      />
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
+  center: { flex: 1, justifyContent: 'center' },
+  list: { padding: 16 },
+  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  header: { borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 8, marginBottom: 12 },
+  name: { fontSize: 20, fontWeight: 'bold', color: '#1a1a1a' },
+  country: { fontSize: 14, color: '#666' },
+  content: { marginTop: 4 },
+  alertText: { color: '#d32f2f', fontSize: 16, fontWeight: '600', marginVertical: 4 },
+  safeText: { color: '#2e7d32', fontSize: 15, fontStyle: 'italic' },
+  empty: { textAlign: 'center', marginTop: 50, color: '#999', fontSize: 16 }
 });
